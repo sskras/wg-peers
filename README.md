@@ -11,7 +11,8 @@ where:
 - `s[how] ` show peer configuration
 - `d[el]  ` delete peer(s)
 - `l[ist] ` list peers
-**\<desc\>** is an optional mnemonic peer description, e.g. "John Doe phone". Default is the peer public key.
+
+**\<desc\>** is an optional mnemonic peer description, e.g. "John Doe phone". Default is the peer public key.</br>
 **\<peer\>** is the peer public key as shown by list command
 
 Configuration files for clients are saved in `/etc/wireguard/clients`.
