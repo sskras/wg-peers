@@ -12,19 +12,20 @@ main () {
 
   # Find Wireguard interface
   if=$(wg show interfaces)
-  [[ $if =~ $'\n' ]] && { echo "WARNING: multiple Wireguard interfaces detected"; }
-  read -r INTERFACE <<<$if; readonly INTERFACE
+  [[ $if =~ ' ' ]] && { echo "WARNING: multiple Wireguard interfaces detected"; }
+  read -r INTERFACE rest <<<$if; readonly INTERFACE
   echo "Using interface $INTERFACE"
 
   case $1 in
     a*)
-      add_new_peer
+      add_new_peer "$2"
       ;;
     s*)
       show_peer_conf $2
       ;;
     d*)
-      delete_peer $2
+      shift
+      delete_peer $@
       ;;
     l*)
       list_peers
@@ -39,13 +40,14 @@ main () {
 
 usage () {
 cat <<USAGE
-$THISFILE [add|show <peer>|del <peer>|list]
+$THISFILE [add [<desc>]|show <peer>|del <peer> ...|list]
 
 a[dd]  : add a new peer
 s[how] : show peer configuration
-d[el]  : delete peer
+d[el]  : delete peer(s)
 l[ist] : list peers
-<peer> is peer public key as shown by list command
+<desc> is an optional mnemonic peer description, e.g. "John Doe phone". Default is the peer public key.
+<peer> is the peer public key as shown by list command
 USAGE
 }
 
@@ -71,29 +73,38 @@ show_peer_conf () {
 }
 
 delete_peer () {
-  local pk=$1
-  check_peer_exists $pk || return 1
-  wg set $INTERFACE peer $pk remove && {
-    wg-quick save ${INTERFACE}
-    clientfile=$CFOLDER/$(md5sum <<<${pk}); clientfile=${clientfile%% *}
-    rm -f $clientfile
-    echo "Removed peer $pk"
-  } || { echo "Cannot remove peer $pk"; return 1; }
+  local pk
+  for pk in $@
+  do
+    check_peer_exists $pk || continue
+    wg set $INTERFACE peer $pk remove && {
+      wg-quick save ${INTERFACE}
+      clientfile=$CFOLDER/$(md5sum <<<${pk}); clientfile=${clientfile%% *}
+      rm -f $clientfile
+      echo "Removed peer $pk"
+    } || { echo "Cannot remove peer $pk"; return 1; }
+  done
 }
 
 list_peers () {
-  wg show $INTERFACE |\
-    awk '/^peer:/{
-            f=1
-            print "# '$THISFILE' show '\''"$2"'\''"
-            print "# '$THISFILE' del '\''"$2"'\''"
-            print
-            next
-            }
-          f'
+  local a b clientfile x y
+  while read -r a b
+  do
+    if [[ $a == 'peer:' ]]
+    then
+      echo -n '-- '
+      clientfile=$CFOLDER/$(md5sum <<<$b); clientfile=${clientfile%% *}
+      read x y < <(head -n1 $clientfile)
+      [[ $x == '#' ]] && echo $y || echo
+      echo "# $THISFILE show '$b'"
+      echo "# $THISFILE del '$b'"
+    fi
+    echo "$a $b"
+  done < <(wg show $INTERFACE)
 }
 
 add_new_peer () {
+  local readonly desc=$1
   # Generate peer keys
   PRIVATE_KEY=$(wg genkey)
   PUBLIC_KEY=$(echo ${PRIVATE_KEY} | wg pubkey)
@@ -103,10 +114,18 @@ add_new_peer () {
   SERVER_PUBLIC_KEY=$(wg show ${INTERFACE} public-key)
 
   # Get next free peer IP (This will break after x.x.x.255)
-  PEER_ADDRESS=$(wg show ${INTERFACE} allowed-ips |\
-    cut -f 2 |\
-    awk -F'[./]' '{print $1"."$2"."$3"."1+$4"/"$5}' |\
-    sort -t '.' -k 1,1 -k 2,2 -k 3,3 -k 4,4 -n | tail -n1)
+  PEER_ADDRESS=$(wg show ${INTERFACE} allowed-ips)
+  if [[ $PEER_ADDRESS ]]
+  then
+    PEER_ADDRESS=$(
+      grep -oP '([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}' <<<"$PEER_ADDRESS" |
+      awk -F'[./]' '{print $1"."$2"."$3"."1+$4"/"$5}' |\
+      sort -t '.' -k 1,1 -k 2,2 -k 3,3 -k 4,4 -n | tail -n1)
+  else
+    PEER_ADDRESS=$(
+      jq -j '.[0].addr_info[0].local|split(".")|.[0]+"."+.[1]+"."+.[2]+"."+(.[3]|tonumber+1|tostring)' \
+        <(ip -4 -j address show ${INTERFACE}))
+  fi
 
   # Try to guess nameserver
   NAMESERVER=$(ip -j addr show $INTERFACE | jq -r '.[0].addr_info[0].local')
@@ -128,6 +147,7 @@ add_new_peer () {
 
   # Generate peer config
   read -r -d$'\x04' CONFIG << END_OF_CONFIG
+# ${desc:-${PUBLIC_KEY}}
 [Interface]
 Address = ${PEER_ADDRESS}
 PrivateKey = ${PRIVATE_KEY}

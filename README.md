@@ -3,15 +3,15 @@
 List, add or delete Wireguard peers. Also show client configuration for already added peers.
 
 ```
-wg-peer [add|show <peer>|del <peer>|list]
+wg-peer [add [<desc>]|show <peer>|del <peer> ...|list]
 ```
 
 where:
 - `a[dd]  ` add a new peer
 - `s[how] ` show peer configuration
-- `d[el]  ` delete peer
+- `d[el]  ` delete peer(s)
 - `l[ist] ` list peers
-
+**\<desc\>** is an optional mnemonic peer description, e.g. "John Doe phone". Default is the peer public key.
 **\<peer\>** is the peer public key as shown by list command
 
 Configuration files for clients are saved in `/etc/wireguard/clients`.
@@ -19,7 +19,7 @@ If there are multiple Wireguard interfaces, wg-peer chooses the first one listed
 
 ### Examples
 - list peers: `wg-peer l`
-- add a new peer: `wg-peer a`
+- add a new peer: `wg-peer a "John Doe phone"`
 - show client configuration for peer: `wg-peer s kTU5yhp1qPBHsKhKs4aSgPKRotU4bGPhl3y8dHD1Ki4=`
 - delete peer: `wg-peer d kTU5yhp1qPBHsKhKs4aSgPKRotU4bGPhl3y8dHD1Ki4=`
 
