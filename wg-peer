@@ -30,6 +30,9 @@ main () {
     l*)
       list_peers
       ;;
+    f*)
+      fix_config_names
+      ;;
     *)
       usage
       ;;
@@ -40,15 +43,37 @@ main () {
 
 usage () {
 cat <<USAGE
-$THISFILE [add [<desc>]|show <peer>|del <peer> ...|list]
+$THISFILE [add [<desc>]|show <peer>|del <peer> ...|list|fix]
 
 a[dd]  : add a new peer
 s[how] : show peer configuration
 d[el]  : delete peer(s)
 l[ist] : list peers
+f[ix]  : rename old style client config files to new (based on client public key)
 <desc> is an optional mnemonic peer description, e.g. "John Doe phone". Default is the peer public key.
 <peer> is the peer public key as shown by list command
 USAGE
+}
+
+sanitize_pk () {
+  local pk=$1
+  tr '/+' '.-' <<<${pk:0:-1}
+  # https://lists.zx2c4.com/pipermail/wireguard/2020-December/006222.html
+}
+
+fix_config_names () {
+  local f pk g
+  cd $CFOLDER || { echo "Cannot access $CFOLDER"; return 1; }
+  echo "Fixing file names in $CFOLDER"
+  for f in *; do
+    pk=$(wg pubkey <<<$(awk -F ' *= *' '/^PrivateKey/{print $2"=";exit}' $f)) || {
+      echo "PrivateKey not found in $f"
+      continue
+    }
+    g=$(sanitize_pk $pk)
+    [[ $f == $g ]] && continue
+    mv -v $f $g
+  done
 }
 
 build_peer_list () {
@@ -64,7 +89,7 @@ check_peer_exists () {
 show_peer_conf () {
   local pk=$1
   check_peer_exists $pk || return 1
-  local clientfile=$CFOLDER/$(md5sum <<<${pk}); clientfile=${clientfile%% *}
+  local clientfile=$CFOLDER/$(sanitize_pk $pk)
   [[ -r $clientfile ]] || { echo "Cannot read $clientfile"; return 1; }
   qrencode -t ANSIUTF8 < $clientfile
   cat $clientfile
@@ -79,7 +104,7 @@ delete_peer () {
     check_peer_exists $pk || continue
     wg set $INTERFACE peer $pk remove && {
       wg-quick save ${INTERFACE}
-      clientfile=$CFOLDER/$(md5sum <<<${pk}); clientfile=${clientfile%% *}
+      clientfile=$CFOLDER/$(sanitize_pk $pk)
       rm -f $clientfile
       echo "Removed peer $pk"
     } || { echo "Cannot remove peer $pk"; return 1; }
@@ -93,7 +118,7 @@ list_peers () {
     if [[ $a == 'peer:' ]]
     then
       echo -n '-- '
-      clientfile=$CFOLDER/$(md5sum <<<$b); clientfile=${clientfile%% *}
+      clientfile=$CFOLDER/$(sanitize_pk $b)
       read x y < <(head -n1 $clientfile)
       [[ $x == '#' ]] && echo $y || echo
       echo "# $THISFILE show '$b'"
@@ -161,7 +186,7 @@ Endpoint = ${ENDPOINT}:${LISTENPORT}
 END_OF_CONFIG
 
   # Save added peer config
-  clientfile=$CFOLDER/$(md5sum <<<${PUBLIC_KEY}); clientfile=${clientfile%% *}
+  clientfile=$CFOLDER/$(sanitize_pk $PUBLIC_KEY)
   mkdir -p $CFOLDER
   touch $clientfile
   chmod go-rwx $clientfile
