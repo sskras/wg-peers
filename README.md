@@ -17,6 +17,7 @@ where:
 **\<peer\>** is the peer public key as shown by list command
 
 Configuration files for clients are saved in `/etc/wireguard/clients`. They are named after the corresponding public key. To fix bad names do this: `wg-peer fix`.
+
 If there are multiple Wireguard interfaces, wg-peer chooses the first one listed by `wg show interfaces` (most likely `wg0`).
 
 ### Examples
