@@ -76,14 +76,9 @@ fix_config_names () {
   done
 }
 
-build_peer_list () {
-  PEERLIST=':'$(wg show $INTERFACE peers | awk '{printf $1":"}')
-}
-
 check_peer_exists () {
   local pk=$1
-  build_peer_list
-  [[ $PEERLIST =~ ":${pk}:" ]] || { echo "Cannot find peer $pk"; return 1; }
+  [[ $(wg show $INTERFACE peers) =~ "${pk}" ]] || { echo "Cannot find peer $pk"; return 1; }
 }
 
 show_peer_conf () {
